@@ -12,6 +12,12 @@ First attempt at a Python3 version.
 
 Currently succeeds to obtain authenticity_token and to login using this token.
 
+## TEST_futurelearn-dl.py.sh:
+
+This is simply a template for calling futurelearn-dl.py.
+
+Put your email, password and course_id as arguments within this file
+
 ## futurelearn-dl.sh:
 
 **NOTE:** This does not work, it's a horrible hack,
