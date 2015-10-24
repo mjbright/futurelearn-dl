@@ -130,6 +130,54 @@ def login(session, url, email, password, token, cookies):
 
     return response
 
+def getCoursePage(course_id):
+    '''
+       GET the initial course page based on it's course_id
+       Then parse the page looking for weekids (an href of the form ../todo/INTEGER)
+
+       RETURNS: the list of weekids in order
+    '''
+
+    weeks_seen=[]
+
+    course_url='https://www.futurelearn.com/courses/{}/2/todo'.format(course_id)
+    response = session.get(course_url, headers=headers)
+    #showResponse(response)
+    content = response.content.decode('utf8')
+
+    if DEBUG:
+        ofile= TMP_DIR + '/course.' + course_id + '.response.content'
+        print("Writing 'course page' response to <{}>".format(ofile))
+        writeFile(ofile, content)
+
+    ## -- Now loop through identifying weekids: ../todo/<WEEKID>
+    pos=0
+    while '/todo/' in content[pos:]:
+        pos += content[pos:].find('/todo/')
+        info = content[ pos : pos + 20 ]
+        # integer weekid starts here:
+        ipos = pos + 6
+
+        #weekid = content[ ipos : ipos + 10 ]
+        #print("INFO=" + info)
+        #print("WEEKID=" + weekid)
+
+        # Build up weekid:
+        weekid = ''
+        while content[ipos].isdigit():
+            weekid  += content[ipos]
+            ipos += 1
+
+        if not weekid in weeks_seen:
+            weeks_seen.append(weekid)
+            print("WEEKID=" + weekid)
+
+        # Step over current '/todo/':
+        pos += 6
+
+    return weeks_seen
+
+
 ## -- Main: --------------------------------------------------------
 
 session = requests.Session()
@@ -143,6 +191,8 @@ print("Using e-mail={} password=***** course_id={}".format(email, course_id))
 ## -- do the login:
 token, cookies = getToken(session, SIGNIN_URL)
 response = login(session, SIGNIN_URL, email, password, token, cookies)
+
+getCoursePage(course_id)
 
 sys.exit(0)
 ################################################################################
