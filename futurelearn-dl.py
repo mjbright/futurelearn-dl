@@ -158,10 +158,6 @@ def getCoursePage(course_id):
         # integer weekid starts here:
         ipos = pos + 6
 
-        #weekid = content[ ipos : ipos + 10 ]
-        #print("INFO=" + info)
-        #print("WEEKID=" + weekid)
-
         # Build up weekid:
         weekid = ''
         while content[ipos].isdigit():
@@ -170,7 +166,8 @@ def getCoursePage(course_id):
 
         if not weekid in weeks_seen:
             weeks_seen.append(weekid)
-            print("WEEKID=" + weekid)
+            if DEBUG:
+                print("WEEKID=" + weekid)
 
         # Step over current '/todo/':
         pos += 6
