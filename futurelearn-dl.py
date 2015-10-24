@@ -13,6 +13,7 @@ import json
     TODO: Do proper argument handling and associated processing
     - specify e-mail, password, course_id, week, type
     - specify temp/output dirs, debug
+    - only download new files
 
 '''
 
@@ -81,7 +82,11 @@ def showResponse(response):
 def writeFile(file, content):
     ''' Write content to the specified file '''
     f = open(file, 'w')
-    f.write(content)
+    try:
+        f.write(content)
+    except UnicodeEncodeError as exc:
+        print("EXC=" + str( exc ))
+        pass
     f.close()
 
 def getToken(session, url):
@@ -130,6 +135,35 @@ def login(session, url, email, password, token, cookies):
 
     return response
 
+def getInteger(content, ipos):
+    '''
+       Return the integer value, if any, in content starting at position ipos
+       RETURNS: the integers string
+    '''
+    # Build up integer:
+    ivalue = ''
+    while content[ipos].isdigit():
+        ivalue  += content[ipos]
+        ipos += 1
+
+    return ivalue
+
+def getCourseWeekStepPage(course_id, week_id, step_id):
+
+    course_step_url='https://www.futurelearn.com/courses/{}/2/steps/{}'.format(course_id, step_id)
+
+    response = session.get(course_step_url, headers=headers)
+    #showResponse(response)
+    content = response.content.decode('utf8')
+
+    if DEBUG:
+        ofile= TMP_DIR + '/course.' + course_id + '.s' + step_id + '.response.content'
+        print("Writing 'course week step {} page' response to <{}>".format(step_id, ofile))
+        writeFile(ofile, content)
+
+    ## -- Now loop through identifying downloadable items:
+
+
 def getCourseWeekPage(course_id, week_id):
 
     course_week_url='https://www.futurelearn.com/courses/{}/2/todo/{}'.format(course_id, week_id)
@@ -143,6 +177,39 @@ def getCourseWeekPage(course_id, week_id):
         print("Writing 'course week {} page' response to <{}>".format(week_id, ofile))
         writeFile(ofile, content)
 
+    ## -- Now loop through identifying steps:
+
+    ## TODO: Make this page parsing more robust: should be using regexes:
+    ## TODO: Make this page parsing more robust: should be checking 'list steps' is part of the '<ol'
+    pos = content.find('<ol class=')
+    current = content[pos:]
+    pos = current.find('list steps')
+    current = current[pos:]
+
+    steps_seen=[]
+
+    pos=0
+    MATCH='/steps/'
+    while MATCH in current:
+        pos += current[pos:].find(MATCH)
+        info = current[ pos-10 : pos + 20 ]
+    
+        #if DEBUG:
+            #print("INFO=" + info)
+
+        ipos = pos + len(MATCH)
+        stepid = getInteger(current, ipos)
+        current = current[pos+6:]
+   
+        if not stepid in steps_seen and not stepid == '':
+            steps_seen.append(stepid)
+            if DEBUG:
+                print("STEPID=" + stepid)
+
+        # Step over current '/steps/':
+        pos += len(MATCH)
+
+    return steps_seen
 
 def getCoursePage(course_id):
     '''
@@ -164,27 +231,25 @@ def getCoursePage(course_id):
         print("Writing 'course page' response to <{}>".format(ofile))
         writeFile(ofile, content)
 
+    ## TODO: Make this page parsing more robust: should be checking /todo/ is part of an "<a href"
     ## -- Now loop through identifying weekids: ../todo/<WEEKID>
     pos=0
-    while '/todo/' in content[pos:]:
-        pos += content[pos:].find('/todo/')
+    MATCH='/todo/'
+    while MATCH in content[pos:]:
+        pos += content[pos:].find(MATCH)
         info = content[ pos : pos + 20 ]
         # integer weekid starts here:
-        ipos = pos + 6
+        ipos = pos + len(MATCH)
 
-        # Build up weekid:
-        weekid = ''
-        while content[ipos].isdigit():
-            weekid  += content[ipos]
-            ipos += 1
+        weekid = getInteger(content, ipos)
 
-        if not weekid in weeks_seen:
+        if not weekid in weeks_seen and not weekid == '':
             weeks_seen.append(weekid)
             if DEBUG:
                 print("WEEKID=" + weekid)
 
         # Step over current '/todo/':
-        pos += 6
+        pos += len(MATCH)
 
     return weeks_seen
 
@@ -205,7 +270,9 @@ response = login(session, SIGNIN_URL, email, password, token, cookies)
 
 weeks = getCoursePage(course_id)
 for week_id in weeks:
-    getCourseWeekPage(course_id, week_id)
+    steps = getCourseWeekPage(course_id, week_id)
+    for step_id in steps:
+        getCourseWeekStepPage(course_id, week_id, step_id)
 
 sys.exit(0)
 ################################################################################
