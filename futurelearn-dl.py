@@ -130,12 +130,26 @@ def login(session, url, email, password, token, cookies):
 
     return response
 
+def getCourseWeekPage(course_id, week_id):
+
+    course_week_url='https://www.futurelearn.com/courses/{}/2/todo/{}'.format(course_id, week_id)
+
+    response = session.get(course_week_url, headers=headers)
+    #showResponse(response)
+    content = response.content.decode('utf8')
+
+    if DEBUG:
+        ofile= TMP_DIR + '/course.' + course_id + '.w' + week_id + '.response.content'
+        print("Writing 'course week {} page' response to <{}>".format(week_id, ofile))
+        writeFile(ofile, content)
+
+
 def getCoursePage(course_id):
     '''
-       GET the initial course page based on it's course_id
-       Then parse the page looking for weekids (an href of the form ../todo/INTEGER)
+       GET the specified week page for this course based on it's course_id and week_id
+       Then parse the page looking for steps (a step corresponds to a page with one or more videos)
 
-       RETURNS: the list of weekids in order
+       RETURNS: the list of steps in order
     '''
 
     weeks_seen=[]
@@ -189,7 +203,9 @@ print("Using e-mail={} password=***** course_id={}".format(email, course_id))
 token, cookies = getToken(session, SIGNIN_URL)
 response = login(session, SIGNIN_URL, email, password, token, cookies)
 
-getCoursePage(course_id)
+weeks = getCoursePage(course_id)
+for week_id in weeks:
+    getCourseWeekPage(course_id, week_id)
 
 sys.exit(0)
 ################################################################################
