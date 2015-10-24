@@ -3,8 +3,8 @@
 An early attempt at automating downloads from the FutureLearn website (for enrolled courses).
 
 There are currently 2 attempts:
-    - futurelearn_dl.sh: This script fails to login
-    - futurelearn_dl.py: This script successfully logs in ... more functionality to be implemented
+- futurelearn_dl.sh: This script fails to login
+- futurelearn_dl.py: This script successfully logs in ... more functionality to be implemented
 
 ## futurelearn-dl.py:
 
@@ -18,7 +18,7 @@ Currently succeeds to obtain authenticity_token and to login using this token.
 I'm throwing this out there because people have requested it and because I need it myself
 (but don't have the time to invest right now).
 
-## NOTE: I did not write the original script, I adapted a script which was posted as a Gist here:
+**NOTE:** I did not write the original script, I adapted a script which was posted as a Gist here:
   https://gist.github.com/nonsleepr/11401542
 
 This is currently a bash script and even the initial login is failing - although we seem to obtain a valid token.
@@ -36,4 +36,5 @@ e.g.
 ## TODO:
 - Fix ;-)
 - Rewrite in a real language such as Python3 ... now started ...
+- Abandon bash script ... (but I leave the code here in case someone wants to run with it)
 
