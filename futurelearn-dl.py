@@ -14,12 +14,25 @@ import json
     - specify e-mail, password, course_id, week, type
     - specify temp/output dirs, debug
     - only download new files
+    - multiple debugging/verbosity levels
+    - download SD or HD
 
 '''
 
 SIGNIN_URL = 'https://www.futurelearn.com/sign-in'
 
 DEBUG=True
+
+# Download file types by extension (case insensitive):
+#DOWNLOAD_TYPES = [ 'pdf', 'mp4', 'mp3', 'doc', 'docx', 'ppt', 'pptx', 'wmv' ]
+#DOWNLOAD_TYPES = [ 'pdf', 'mp4' ]
+#DOWNLOAD_TYPES = [ 'pdf' ]
+#DOWNLOAD_TYPES = [ 'mp4' ]
+#DOWNLOAD_TYPES = [ 'pdf', 'mp4', 'mp3', 'ppt', 'pptx', 'wmv' ]
+DOWNLOAD_TYPES = [ 'pdf', 'mp4' ]
+for d in range(len(DOWNLOAD_TYPES)):
+    DOWNLOAD_TYPES[d] = DOWNLOAD_TYPES[d].lower()
+    
 
 TMP_DIR=os.getenv('HOME') + '/tmp/FUTURELEARN_DL'
 OP_DIR=os.getenv('HOME') + '/FUTURELEARN_DL'
@@ -149,20 +162,157 @@ def getInteger(content, ipos):
     return ivalue
 
 def getCourseWeekStepPage(course_id, week_id, step_id):
+    '''
+        get the specified step page
+
+        RETURNS: list of downloadable urls
+    '''
 
     course_step_url='https://www.futurelearn.com/courses/{}/2/steps/{}'.format(course_id, step_id)
 
+    URLS = {}
+    urls_seen = []
+
     response = session.get(course_step_url, headers=headers)
     #showResponse(response)
-    content = response.content.decode('utf8')
+    content = response.content.decode('utf8', 'ignore')
 
     if DEBUG:
         ofile= TMP_DIR + '/course.' + course_id + '.s' + step_id + '.response.content'
         print("Writing 'course week step {} page' response to <{}>".format(step_id, ofile))
         writeFile(ofile, content)
 
+    for DOWNLOAD_TYPE in DOWNLOAD_TYPES:
+        #print("Searching for '{}' files in {}".format(DOWNLOAD_TYPE, ofile))
+        URLS[DOWNLOAD_TYPE] = getDownloadableURLs(content, DOWNLOAD_TYPE)
+
+    print()
+    showDownloads(str(step_id), URLS)
+    #print(str(URLS))
+    return URLS
+
+def showDownloads(label, urls):
+    print("-- " + label + ": Downloadable urls found: -----------")
+
+    for type in urls:
+        if len(urls[type]) != 0:
+            print(type + ": ", end='')
+            for url in urls[type]:
+                print("-- " + url)
+
+def pause(msg):
+    print(msg)
+    if DEBUG:
+        print("Press <return> to continue")
+        input()
+
+def getDownloadableURLs(content, DOWNLOAD_TYPE):
     ## -- Now loop through identifying downloadable items:
 
+    urls = []
+    urls_seen = []
+
+    '''
+         Generally we have an 'a href="URL"'
+         POS_MATCH:   used to detect beginning of appropriate tag
+         MEDIA_MATCH: used to if there is one type matching entry in whole 'content'
+    '''
+    POS_MATCH='<a href='
+    MEDIA_MATCH=DOWNLOAD_TYPE
+
+    # except for video
+    if DOWNLOAD_TYPE == 'mp4':
+        POS_MATCH='<video'
+        MEDIA_MATCH='video/mp4'
+
+    # If there's no mention of such media in the whole file, leave now:
+    if not MEDIA_MATCH in content.lower():
+        return urls
+        #fatal("SHOULD MATCH")
+
+    pos = content.lower().find(DOWNLOAD_TYPE)
+    if DEBUG: print("Searching for {} in <<{}...>>".format(DOWNLOAD_TYPE, content[pos-20:pos+20]))
+
+# MP4:
+# <video poster="//view.vzaar.com/2088550/image" width="auto" height="auto" id="video-2088550" class="video-js vjs-futurelearn-skin" controls="controls" preload="none" data-hd-src="//view.vzaar.com/2088550/video/hd" data-sd-src="//view.vzaar.com/2088550/video"><source src="//view.vzaar.com/2088550/video" type="video/mp4" />
+
+    #if DEBUG: print("getDownloadableURLs({}..., {})".format(content[:10], DOWNLOAD_TYPE))
+
+    pos = 0
+    while POS_MATCH in content.lower():
+        mpos = content[pos:].lower().find(POS_MATCH)
+        if mpos == -1:
+            #if len(urls) != 0:
+                #print(str(urls))
+                #fatal("END")
+            return urls
+       
+        #if DEBUG: print("FOUND {} at mpos={}".format(DOWNLOAD_TYPE, str(mpos)))
+        pos += mpos
+
+        # In video case, we also need to advance to the '<source src="XX"' tag
+        if DOWNLOAD_TYPE == 'mp4':
+            #if DEBUG: print("video in <<{}...>>".format(content[pos:pos+400]))
+            pos += len(POS_MATCH)
+
+            SRC_MATCH='<source src='
+            mpos = content[pos:].lower().find(SRC_MATCH)
+
+            # If there's no match, assume we reached the end of the content:
+            if mpos == -1:
+                return urls
+
+            pos += mpos
+            pos += len(SRC_MATCH)
+            #if DEBUG: print("source src ==> <<{}...>>".format(content[pos:pos+400]))
+        else:
+            #if DEBUG: print("HREF ==> <<{}...>>".format(content[pos:pos+400]))
+            pos += len(POS_MATCH)
+
+        quote = content[pos]
+        if quote != "'" and quote != '"':
+            fatal("No quote(char={}) in <<{}...>>".format(quote, content[pos-10:pos+10]))
+        #if DEBUG: print("Quote in <<{}...>>".format(content[pos-10:pos+10]))
+
+        # step over start-quote:
+        pos += 1
+
+        # detect end-quote:
+        eqpos = content[pos:].find(quote)
+        if eqpos == -1:
+            fatal("No end-quote in <<{}...>>".format(content[pos:pos+100]))
+        eqpos += pos
+
+        # Strip out the url, between the quotes:
+        url=content[pos:eqpos]
+
+        # Detect if just "//url" and insert http:
+        if url[0:2] == "//":
+            url = "https:" + url
+
+        if DEBUG: print("content[{}:{}] => url={}".format(pos, eqpos, url))
+        #pause("Got url <<{}>>".format(url))
+
+        #if DEBUG: print("URL=<<{}>>".format(url))
+
+        if url in urls_seen or url == '' or len(url) == 0:
+            pass
+        #if DEBUG: print("NEW URL=<<{}>>".format(url))
+
+        urls_seen.append(url)
+        lurl = url.lower()
+
+        if DOWNLOAD_TYPE == 'mp4':
+            #if DEBUG: print("MATCHING URL=<<{}>>".format(url))
+            urls.append( url )
+        else:
+            # With other types, check that the url ends with the type e.g. ".pdf"
+            if lurl[-(1+len(DOWNLOAD_TYPE)):] == "." + DOWNLOAD_TYPE:
+                #if DEBUG: print("MATCHING URL=<<{}>>".format(url))
+                urls.append( url )
+
+    return urls
+        
 
 def getCourseWeekPage(course_id, week_id):
 
@@ -203,8 +353,7 @@ def getCourseWeekPage(course_id, week_id):
    
         if not stepid in steps_seen and not stepid == '':
             steps_seen.append(stepid)
-            if DEBUG:
-                print("STEPID=" + stepid)
+            #if DEBUG: print("STEPID=" + stepid)
 
         # Step over current '/steps/':
         pos += len(MATCH)
