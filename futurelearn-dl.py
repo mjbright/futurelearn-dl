@@ -21,7 +21,14 @@ import json
 
 SIGNIN_URL = 'https://www.futurelearn.com/sign-in'
 
-DEBUG=True
+#DEBUG=True
+DEBUG=False
+#DEBUG = os.getenv('DOWNLOAD_DEBUG', default=False)
+DOWNLOAD=True
+OVERWRITE_NONEMPTY_FILES=False
+
+WEEKS = []
+WEEK_NUM = -1 # Select all weeks unless specified on command-line
 
 # Download file types by extension (case insensitive):
 #DOWNLOAD_TYPES = [ 'pdf', 'mp4', 'mp3', 'doc', 'docx', 'ppt', 'pptx', 'wmv' ]
@@ -33,13 +40,26 @@ DOWNLOAD_TYPES = [ 'pdf', 'mp4' ]
 for d in range(len(DOWNLOAD_TYPES)):
     DOWNLOAD_TYPES[d] = DOWNLOAD_TYPES[d].lower()
     
+TMP_DIR = os.getenv('TMP_DIR', default='/tmp/FUTURELEARN_DL')
+OP_DIR  = os.getenv('OP_DIR',  default=os.getenv('HOME') + '/Eductation/FUTURELEARN')
 
-TMP_DIR=os.getenv('HOME') + '/tmp/FUTURELEARN_DL'
-OP_DIR=os.getenv('HOME') + '/FUTURELEARN_DL'
+print("Using temp   dir <{}>".format(TMP_DIR))
+print("Using Output dir <{}>".format(OP_DIR))
 
 email = sys.argv[1]
 password = sys.argv[2]
 course_id = sys.argv[3]
+course_run = int(sys.argv[4])
+
+COURSE_URL='https://www.futurelearn.com/courses/{}/{}/todo'.format(course_id, course_run)
+COURSE_STEP_URL='https://www.futurelearn.com/courses/{}/{}/steps'.format(course_id, course_run)
+
+if len(sys.argv) == 6:
+    WEEK_NUM = int(sys.argv[5])
+
+#print(len(sys.argv))
+#sys.exit(0)
+#if len(sys.argv
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/29.0.1547.62 Safari/537.36',
@@ -59,7 +79,11 @@ def mkdir_p(path):
          parent directories
     '''
     try:
+        if DEBUG: print("Creating dir <{}>".format(path))
         os.makedirs(path)
+        if not os.path.isdir(path):
+            fatal("Error creating dir <{}>".format(path))
+
     except OSError as exc: # Python >2.5
         if exc.errno == errno.EEXIST and os.path.isdir(path):
             pass
@@ -92,6 +116,17 @@ def showResponse(response):
     print("url={}".format(str(response.url)))
     print("json={}".format(str(response.json)))
 
+def writeBinaryFile(file, content):
+    ''' Write binary content to the specified file '''
+
+    f = open(file, 'wb')
+    try:
+        f.write(content)
+    except UnicodeEncodeError as exc:
+        print("EXC=" + str( exc ))
+        pass
+    f.close()
+
 def writeFile(file, content):
     ''' Write content to the specified file '''
     f = open(file, 'w')
@@ -116,20 +151,27 @@ def getToken(session, url):
 
     apos = content.find("authenticity_token")
     if apos == -1:
-        fatal("No authenticity_token in response")
-    print(apos)
+        fatal("getToken: No authenticity_token in response")
+    #print(apos)
     vpos = content[ apos: ].find("value=")
     # "authentication_token" in content:
     if vpos == -1:
-        fatal("No value in authenticity_token in response")
+        fatal("getToken: No value in authenticity_token in response")
     
     token_pos = apos + vpos + len("value=") + 1
     close_quote_pos = token_pos + content[token_pos:].find('"')
     
-    print("authenticity_token at pos {} -> {} in response.content".format(token_pos, close_quote_pos))
+    if DEBUG:
+        print("authenticity_token at pos {} -> {} in response.content".format(token_pos, close_quote_pos))
     
     token=content[ token_pos: close_quote_pos ]
-    print("TOKEN='{}'".format(token))
+    #if DEBUG: print("Got authenticity_token '{}'".format(token))
+    #print("Got token '{}'".format(token))
+    #print("Got authenticity_token '{}'".format(len(token)))
+
+    if len(token) < 88:
+        fatal("getToken: Failed to get TOKEN")
+
     return token, response.cookies
 
 def login(session, url, email, password, token, cookies):
@@ -161,19 +203,24 @@ def getInteger(content, ipos):
 
     return ivalue
 
-def getCourseWeekStepPage(course_id, week_id, step_id):
+def getCourseWeekStepPage(course_id, week_id, step_id, week_num):
     '''
         get the specified step page
 
         RETURNS: list of downloadable urls
     '''
 
-    course_step_url='https://www.futurelearn.com/courses/{}/2/steps/{}'.format(course_id, step_id)
+    url = COURSE_STEP_URL + '/' + str(step_id)
 
     URLS = {}
     urls_seen = []
 
-    response = session.get(course_step_url, headers=headers)
+    response = session.get(url, headers=headers)
+    if response.status_code != 200:
+        print("getCourseWeekStepPage: Failed to download url <{}>".format(url))
+        return URLS
+        #fatal("getCourseWeekStepPage: Failed to download url <{}>".format(url))
+
     #showResponse(response)
     content = response.content.decode('utf8', 'ignore')
 
@@ -182,13 +229,19 @@ def getCourseWeekStepPage(course_id, week_id, step_id):
         print("Writing 'course week step {} page' response to <{}>".format(step_id, ofile))
         writeFile(ofile, content)
 
+    num_urls = 0
     for DOWNLOAD_TYPE in DOWNLOAD_TYPES:
         #print("Searching for '{}' files in {}".format(DOWNLOAD_TYPE, ofile))
-        URLS[DOWNLOAD_TYPE] = getDownloadableURLs(content, DOWNLOAD_TYPE)
+        URLS[DOWNLOAD_TYPE] = \
+            getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE)
 
-    print()
-    showDownloads(str(step_id), URLS)
+        num_urls += len(URLS[DOWNLOAD_TYPE])
+
+    if num_urls > 0:
+        print()
+        showDownloads(str(step_id), URLS)
     #print(str(URLS))
+
     return URLS
 
 def showDownloads(label, urls):
@@ -206,11 +259,12 @@ def pause(msg):
         print("Press <return> to continue")
         input()
 
-def getDownloadableURLs(content, DOWNLOAD_TYPE):
+def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE):
     ## -- Now loop through identifying downloadable items:
 
     urls = []
     urls_seen = []
+    num_urls = 0
 
     '''
          Generally we have an 'a href="URL"'
@@ -233,8 +287,8 @@ def getDownloadableURLs(content, DOWNLOAD_TYPE):
     pos = content.lower().find(DOWNLOAD_TYPE)
     if DEBUG: print("Searching for {} in <<{}...>>".format(DOWNLOAD_TYPE, content[pos-20:pos+20]))
 
-# MP4:
-# <video poster="//view.vzaar.com/2088550/image" width="auto" height="auto" id="video-2088550" class="video-js vjs-futurelearn-skin" controls="controls" preload="none" data-hd-src="//view.vzaar.com/2088550/video/hd" data-sd-src="//view.vzaar.com/2088550/video"><source src="//view.vzaar.com/2088550/video" type="video/mp4" />
+    # MP4:
+    # <video poster="//view.vzaar.com/2088550/image" width="auto" height="auto" id="video-2088550" class="video-js vjs-futurelearn-skin" controls="controls" preload="none" data-hd-src="//view.vzaar.com/2088550/video/hd" data-sd-src="//view.vzaar.com/2088550/video"><source src="//view.vzaar.com/2088550/video" type="video/mp4" />
 
     #if DEBUG: print("getDownloadableURLs({}..., {})".format(content[:10], DOWNLOAD_TYPE))
 
@@ -302,23 +356,89 @@ def getDownloadableURLs(content, DOWNLOAD_TYPE):
         urls_seen.append(url)
         lurl = url.lower()
 
+        download_dir = OP_DIR + '/' + course_id + '/week' + str(week_num)
+
         if DOWNLOAD_TYPE == 'mp4':
             #if DEBUG: print("MATCHING URL=<<{}>>".format(url))
             urls.append( url )
+            downloadFile(url, download_dir, DOWNLOAD_TYPE)
         else:
             # With other types, check that the url ends with the type e.g. ".pdf"
             if lurl[-(1+len(DOWNLOAD_TYPE)):] == "." + DOWNLOAD_TYPE:
                 #if DEBUG: print("MATCHING URL=<<{}>>".format(url))
                 urls.append( url )
+                downloadFile(url, download_dir, DOWNLOAD_TYPE)
 
     return urls
+
+def downloadURLToFile(url, file, DOWNLOAD_TYPE):
+    if not(OVERWRITE_NONEMPTY_FILES) and os.path.exists(file):
+        statinfo = os.stat(file)
+        #print(dir(statinfo))
+        if statinfo.st_size != 0:
+            print("Skipping non-zero size file <{}> of {} bytes".format(file, statinfo.st_size))
+            return
+
+    print("Downloading url<{}> ...".format(url), end='')
+
+    # No user-agent: had some failures in this case when specifying user-agent ...
+    headers = {}
+    response = session.get(url, headers=headers)
+    if response.status_code != 200:
+        print("downloadURLToFile: Failed to download url <{}> => {}".format(url, response.status_code))
+        return
+
+    #showResponse(response)
+    print("type={}, content.len={}".format(DOWNLOAD_TYPE, len(response.content)))
+    if "The request signature we calculated" in response.content.decode('utf8', 'ignore'):
+        print("Skipping bad content for file <{}> - may not be available yet".format(file))
+        return
         
+    print("Writing content to <{}>".format(file))
+    writeBinaryFile(file, response.content)
+    #fatal("STOP")
+
+def downloadFile(url, download_dir, DOWNLOAD_TYPE):
+    if not DOWNLOAD:
+        return
+
+    mkdir_p(download_dir)
+    
+
+    if DOWNLOAD_TYPE == 'mp4':
+        # We need to create an 'x.mp4' filename from the url of the form
+        #    'https://view.vzaar.com/2088434/video':
+        
+        # Let's strip of the /video at the end:
+        urlUptoNumber = url [ :url.rfind('/video') ]
+        #print(urlUptoNumber)
+
+        # Get the filename from the url after the last slash (where the number is):
+        filename = course_id + '_' + urlUptoNumber[ urlUptoNumber.rfind('/') + 1: ] + ".mp4"
+
+        ofile= download_dir + '/' + filename
+        downloadURLToFile(url, ofile, DOWNLOAD_TYPE)
+    else:
+        # Get the filename from the url after the last slash (where the source filename is):
+        filename = url[ url.rfind('/') + 1: ]
+
+        # Replace any '%20' chars by underscore(_)
+        filename = filename.replace('%20', '_')
+
+        if '%' in filename:
+            fatal("downloadFile: Unhandled escape sequence in filename <{}>".format(filename))
+
+        ofile= download_dir + '/' + filename
+        downloadURLToFile(url, ofile, DOWNLOAD_TYPE)
+
 
 def getCourseWeekPage(course_id, week_id):
 
-    course_week_url='https://www.futurelearn.com/courses/{}/2/todo/{}'.format(course_id, week_id)
+    url=COURSE_URL + '/{}'.format(week_id)
 
-    response = session.get(course_week_url, headers=headers)
+    response = session.get(url, headers=headers)
+    if response.status_code != 200:
+        fatal("getCourseWeekPage: Failed to download url <{}>".format(url))
     #showResponse(response)
     content = response.content.decode('utf8')
 
@@ -370,11 +490,11 @@ def getCoursePage(course_id):
 
     weeks_seen=[]
 
-    course_url='https://www.futurelearn.com/courses/{}/2/todo'.format(course_id)
-    response = session.get(course_url, headers=headers)
+    response = session.get(COURSE_URL, headers=headers)
     #showResponse(response)
     content = response.content.decode('utf8')
 
+    DEBUG=True
     if DEBUG:
         ofile= TMP_DIR + '/course.' + course_id + '.response.content'
         print("Writing 'course page' response to <{}>".format(ofile))
@@ -400,6 +520,9 @@ def getCoursePage(course_id):
         # Step over current '/todo/':
         pos += len(MATCH)
 
+    if (len(weeks_seen) <= 0):
+        fatal("getCoursePage: No week entries found - check your courseid and the courserun")
+
     return weeks_seen
 
 
@@ -417,11 +540,32 @@ print("Using e-mail={} password=***** course_id={}".format(email, course_id))
 token, cookies = getToken(session, SIGNIN_URL)
 response = login(session, SIGNIN_URL, email, password, token, cookies)
 
-weeks = getCoursePage(course_id)
-for week_id in weeks:
+WEEKS = getCoursePage(course_id)
+
+print("Course seems to comprise of {} weeks".format(len(WEEKS)))
+#print(str(WEEKS))
+
+if WEEK_NUM == -1: # All
+    print("Downloading all weeks - if available")
+    week_num=0
+    for week_id in WEEKS:
+        week_num += 1
+        print("Downloading available week{} material".format(week_num))
+        steps = getCourseWeekPage(course_id, week_id)
+        print("STEPS=" + str(steps))
+        for step_id in steps:
+            getCourseWeekStepPage(course_id, week_id, step_id, week_num)
+else:
+    print("Downloading week " + str(WEEK_NUM))
+    if WEEK_NUM > len(WEEKS) or WEEK_NUM < 1:
+        fatal("No such week as " + str(WEEK_NUM))
+
+    week_num = WEEK_NUM
+    week_id = WEEKS[week_num-1]
+    print("Downloading available week{} material".format(week_num))
     steps = getCourseWeekPage(course_id, week_id)
     for step_id in steps:
-        getCourseWeekStepPage(course_id, week_id, step_id)
+        getCourseWeekStepPage(course_id, week_id, step_id, week_num)
 
 sys.exit(0)
 ################################################################################

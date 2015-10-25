@@ -1,8 +1,26 @@
 #!/bin/bash 
 
-./futurelearn-dl.py YOUR_LOGIN YOUR_PASSWORD COURSE_ID
+COURSE_ID="MyCourse"
+COURSE_RUN=1
+COURSEDIR=/e/Education/FUTURELEARN/$COURSE_ID
+
+./futurelearn-dl.py YOUR_LOGIN YOUR_PASSWORD $COURSE_ID $COURSE_RUN [<WEEK_NUM>]
+
+if [ $? -eq 0 ];then
+    find $COURSEDIR -type f -exec ls -altr {} \;
+else
+    echo "Look for new files with - find $COURSEDIR -type f -exec ls -altr {} \\;"
+fi
+
+
+
 
 # e.g.
-#    ./futurelearn-dl.py joe joespass data-to-insight
+# for course run 1 of data-to-insight:
+#
+#    ./futurelearn-dl.py joe joespass data-to-insight 1
+#
+# or to download just week1:
+#    ./futurelearn-dl.py joe joespass data-to-insight 1 1
 
 
