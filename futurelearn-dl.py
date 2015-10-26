@@ -41,7 +41,7 @@ for d in range(len(DOWNLOAD_TYPES)):
     DOWNLOAD_TYPES[d] = DOWNLOAD_TYPES[d].lower()
     
 TMP_DIR = os.getenv('TMP_DIR', default='/tmp/FUTURELEARN_DL')
-OP_DIR  = os.getenv('OP_DIR',  default=os.getenv('HOME') + '/Eductation/FUTURELEARN')
+OP_DIR  = os.getenv('OP_DIR',  default=os.getenv('HOME') + '/Education/FUTURELEARN')
 
 print("Using temp   dir <{}>".format(TMP_DIR))
 print("Using Output dir <{}>".format(OP_DIR))
