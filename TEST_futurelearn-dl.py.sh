@@ -4,6 +4,12 @@ COURSE_ID="MyCourse"
 COURSE_RUN=1
 COURSEDIR=/e/Education/FUTURELEARN/$COURSE_ID
 
+export TMP_DIR=~/tmp/FUTURELEARN_DL
+export OP_DIR=~/Education/FutureLearn
+
+export FL_DEBUG=False
+export FL_VERBOSE=1
+
 ./futurelearn-dl.py YOUR_LOGIN YOUR_PASSWORD $COURSE_ID $COURSE_RUN [<WEEK_NUM>]
 
 if [ $? -eq 0 ];then

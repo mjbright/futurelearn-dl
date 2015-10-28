@@ -21,9 +21,10 @@ import json
 
 SIGNIN_URL = 'https://www.futurelearn.com/sign-in'
 
-#DEBUG=True
-DEBUG=False
-#DEBUG = os.getenv('DOWNLOAD_DEBUG', default=False)
+PAUSE   = os.getenv('FL_PAUSE', default=False)
+DEBUG   = os.getenv('FL_DEBUG', default=False)
+VERBOSE = int(os.getenv('FL_VERBOSE', default=1))
+
 DOWNLOAD=True
 OVERWRITE_NONEMPTY_FILES=False
 
@@ -40,26 +41,6 @@ DOWNLOAD_TYPES = [ 'pdf', 'mp4' ]
 for d in range(len(DOWNLOAD_TYPES)):
     DOWNLOAD_TYPES[d] = DOWNLOAD_TYPES[d].lower()
     
-TMP_DIR = os.getenv('TMP_DIR', default='/tmp/FUTURELEARN_DL')
-OP_DIR  = os.getenv('OP_DIR',  default=os.getenv('HOME') + '/Education/FUTURELEARN')
-
-print("Using temp   dir <{}>".format(TMP_DIR))
-print("Using Output dir <{}>".format(OP_DIR))
-
-email = sys.argv[1]
-password = sys.argv[2]
-course_id = sys.argv[3]
-course_run = int(sys.argv[4])
-
-COURSE_URL='https://www.futurelearn.com/courses/{}/{}/todo'.format(course_id, course_run)
-COURSE_STEP_URL='https://www.futurelearn.com/courses/{}/{}/steps'.format(course_id, course_run)
-
-if len(sys.argv) == 6:
-    WEEK_NUM = int(sys.argv[5])
-
-#print(len(sys.argv))
-#sys.exit(0)
-#if len(sys.argv
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/29.0.1547.62 Safari/537.36',
@@ -73,13 +54,22 @@ def fatal(msg):
     print("FATAL:" + msg)
     sys.exit(1)
 
+def debug(verbosity_level, msg):
+    if verbosity_level == 1:
+        #print("DEBUG: " + msg)
+        print(msg)
+        return
+
+    if VERBOSE >= verbosity_level and DEBUG:
+        print("DEBUG: " + msg)
+
 def mkdir_p(path):
     '''
          Perform equivalent of 'mkdir -p path' to create a directory and any necessary
          parent directories
     '''
     try:
-        if DEBUG: print("Creating dir <{}>".format(path))
+        debug(2, "Creating dir <{}>".format(path))
         os.makedirs(path)
         if not os.path.isdir(path):
             fatal("Error creating dir <{}>".format(path))
@@ -123,7 +113,7 @@ def writeBinaryFile(file, content):
     try:
         f.write(content)
     except UnicodeEncodeError as exc:
-        print("EXC=" + str( exc ))
+        print("ERROR: UnicodeEncodeError - " + str( exc ))
         pass
     f.close()
 
@@ -133,9 +123,19 @@ def writeFile(file, content):
     try:
         f.write(content)
     except UnicodeEncodeError as exc:
-        print("EXC=" + str( exc ))
+        print("ERROR: UnicodeEncodeError - " + str( exc ))
         pass
     f.close()
+
+def saveItem(file, item, content):
+    ofile= TMP_DIR + '/' + file
+    debug(2, "Writing {} to <{}>".format(item, ofile))
+    writeFile(ofile, content)
+    return ofile
+
+def saveDebugItem(file, item, content):
+    if DEBUG:
+        return saveItem(file, item, content)
 
 def getToken(session, url):
     ''' Perform request to the specified signin url and extract the 'authenticity_token'
@@ -144,30 +144,24 @@ def getToken(session, url):
     response = session.get(url, headers=headers)
     #showResponse(response)
     content = response.content.decode('utf8')
-    if DEBUG:
-        ofile= TMP_DIR + '/token.response.content'
-        print("Writing 'getToken' response to <{}>".format(ofile))
-        writeFile(ofile, content)
+    saveDebugItem('token.response.content', "'getToken' response", content)
 
     apos = content.find("authenticity_token")
     if apos == -1:
         fatal("getToken: No authenticity_token in response")
-    #print(apos)
+
     vpos = content[ apos: ].find("value=")
-    # "authentication_token" in content:
+
     if vpos == -1:
         fatal("getToken: No value in authenticity_token in response")
     
     token_pos = apos + vpos + len("value=") + 1
     close_quote_pos = token_pos + content[token_pos:].find('"')
     
-    if DEBUG:
-        print("authenticity_token at pos {} -> {} in response.content".format(token_pos, close_quote_pos))
+    debug(2, "authenticity_token at pos {} -> {} in response.content".format(token_pos, close_quote_pos))
     
     token=content[ token_pos: close_quote_pos ]
-    #if DEBUG: print("Got authenticity_token '{}'".format(token))
-    #print("Got token '{}'".format(token))
-    #print("Got authenticity_token '{}'".format(len(token)))
+    debug(4, "Got authenticity_token '{}' [len {}]".format(token, len(token)))
 
     if len(token) < 88:
         fatal("getToken: Failed to get TOKEN")
@@ -179,14 +173,11 @@ def login(session, url, email, password, token, cookies):
         RETURN: response
     '''
     data=json.dumps({'email': email, 'password':password, 'authenticity_token':token})
-    #print("COOKIES={}".format( str(cookies) ))
+    debug(4, "COOKIES={}".format( str(cookies) ))
 
     response = session.post(url, headers=headers, cookies=cookies, data=data)
     content = response.content.decode('utf8')
-    if DEBUG:
-        ofile= TMP_DIR + '/login.response.content'
-        print("Writing 'login' response to <{}>".format(ofile))
-        writeFile(ofile, content)
+    saveDebugItem('login.response.content', "'login' response", content)
 
     return response
 
@@ -217,30 +208,28 @@ def getCourseWeekStepPage(course_id, week_id, step_id, week_num):
 
     response = session.get(url, headers=headers)
     if response.status_code != 200:
-        print("getCourseWeekStepPage: Failed to download url <{}>".format(url))
-        return URLS
+        debug(1, "getCourseWeekStepPage: Failed to download url <{}>".format(url))
         #fatal("getCourseWeekStepPage: Failed to download url <{}>".format(url))
+        return URLS
 
     #showResponse(response)
     content = response.content.decode('utf8', 'ignore')
 
-    if DEBUG:
-        ofile= TMP_DIR + '/course.' + course_id + '.s' + step_id + '.response.content'
-        print("Writing 'course week step {} page' response to <{}>".format(step_id, ofile))
-        writeFile(ofile, content)
+    ofile = saveItem( 'course.' + course_id + '.s' + step_id + '.response.content',
+                   "'course week step {} page'".format(step_id),
+                   content)
 
     num_urls = 0
     for DOWNLOAD_TYPE in DOWNLOAD_TYPES:
-        #print("Searching for '{}' files in {}".format(DOWNLOAD_TYPE, ofile))
+        debug(4, "Searching for '{}' files in {}".format(DOWNLOAD_TYPE, ofile))
         URLS[DOWNLOAD_TYPE] = \
             getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE)
 
         num_urls += len(URLS[DOWNLOAD_TYPE])
 
-    if num_urls > 0:
+    if num_urls > 0 and DEBUG and VERBOSE > 2:
         print()
         showDownloads(str(step_id), URLS)
-    #print(str(URLS))
 
     return URLS
 
@@ -254,8 +243,8 @@ def showDownloads(label, urls):
                 print("-- " + url)
 
 def pause(msg):
-    print(msg)
-    if DEBUG:
+    if PAUSE:
+        print(msg)
         print("Press <return> to continue")
         input()
 
@@ -285,12 +274,12 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
         #fatal("SHOULD MATCH")
 
     pos = content.lower().find(DOWNLOAD_TYPE)
-    if DEBUG: print("Searching for {} in <<{}...>>".format(DOWNLOAD_TYPE, content[pos-20:pos+20]))
+    debug(2, "Searching for {} in <<{}...>>".format(DOWNLOAD_TYPE, content[pos-20:pos+20]))
 
     # MP4:
     # <video poster="//view.vzaar.com/2088550/image" width="auto" height="auto" id="video-2088550" class="video-js vjs-futurelearn-skin" controls="controls" preload="none" data-hd-src="//view.vzaar.com/2088550/video/hd" data-sd-src="//view.vzaar.com/2088550/video"><source src="//view.vzaar.com/2088550/video" type="video/mp4" />
 
-    #if DEBUG: print("getDownloadableURLs({}..., {})".format(content[:10], DOWNLOAD_TYPE))
+    debug(4, "getDownloadableURLs({}..., {})".format(content[:10], DOWNLOAD_TYPE))
 
     pos = 0
     while POS_MATCH in content.lower():
@@ -301,12 +290,12 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
                 #fatal("END")
             return urls
        
-        #if DEBUG: print("FOUND {} at mpos={}".format(DOWNLOAD_TYPE, str(mpos)))
+        debug(4, "FOUND {} at mpos={}".format(DOWNLOAD_TYPE, str(mpos)))
         pos += mpos
 
         # In video case, we also need to advance to the '<source src="XX"' tag
         if DOWNLOAD_TYPE == 'mp4':
-            #if DEBUG: print("video in <<{}...>>".format(content[pos:pos+400]))
+            debug(4, "video in <<{}...>>".format(content[pos:pos+400]))
             pos += len(POS_MATCH)
 
             SRC_MATCH='<source src='
@@ -318,15 +307,15 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
 
             pos += mpos
             pos += len(SRC_MATCH)
-            #if DEBUG: print("source src ==> <<{}...>>".format(content[pos:pos+400]))
+            debug(4, "source src ==> <<{}...>>".format(content[pos:pos+400]))
         else:
-            #if DEBUG: print("HREF ==> <<{}...>>".format(content[pos:pos+400]))
+            debug(4, "HREF ==> <<{}...>>".format(content[pos:pos+400]))
             pos += len(POS_MATCH)
 
         quote = content[pos]
         if quote != "'" and quote != '"':
             fatal("No quote(char={}) in <<{}...>>".format(quote, content[pos-10:pos+10]))
-        #if DEBUG: print("Quote in <<{}...>>".format(content[pos-10:pos+10]))
+        debug(4, "Quote in <<{}...>>".format(content[pos-10:pos+10]))
 
         # step over start-quote:
         pos += 1
@@ -344,14 +333,14 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
         if url[0:2] == "//":
             url = "https:" + url
 
-        if DEBUG: print("content[{}:{}] => url={}".format(pos, eqpos, url))
+        debug(2, "content[{}:{}] => url={}".format(pos, eqpos, url))
         #pause("Got url <<{}>>".format(url))
 
-        #if DEBUG: print("URL=<<{}>>".format(url))
+        debug(4, "URL=<<{}>>".format(url))
 
         if url in urls_seen or url == '' or len(url) == 0:
             pass
-        #if DEBUG: print("NEW URL=<<{}>>".format(url))
+        debug(4, "NEW URL=<<{}>>".format(url))
 
         urls_seen.append(url)
         lurl = url.lower()
@@ -359,13 +348,13 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
         download_dir = OP_DIR + '/' + course_id + '/week' + str(week_num)
 
         if DOWNLOAD_TYPE == 'mp4':
-            #if DEBUG: print("MATCHING URL=<<{}>>".format(url))
+            debug(4, "MATCHING URL=<<{}>>".format(url))
             urls.append( url )
             downloadFile(url, download_dir, DOWNLOAD_TYPE)
         else:
             # With other types, check that the url ends with the type e.g. ".pdf"
             if lurl[-(1+len(DOWNLOAD_TYPE)):] == "." + DOWNLOAD_TYPE:
-                #if DEBUG: print("MATCHING URL=<<{}>>".format(url))
+                debug(4, "MATCHING URL=<<{}>>".format(url))
                 urls.append( url )
                 downloadFile(url, download_dir, DOWNLOAD_TYPE)
 
@@ -374,12 +363,11 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
 def downloadURLToFile(url, file, DOWNLOAD_TYPE):
     if not(OVERWRITE_NONEMPTY_FILES) and os.path.exists(file):
         statinfo = os.stat(file)
-        #print(dir(statinfo))
         if statinfo.st_size != 0:
-            print("Skipping non-zero size file <{}> of {} bytes".format(file, statinfo.st_size))
+            debug(2, "Skipping non-zero size file <{}> of {} bytes".format(file, statinfo.st_size))
             return
 
-    print("Downloading url<{}> ...".format(url), end='')
+    debug(1, "Downloading url<{}> ...".format(url), end='')
 
     # No user-agent: had some failures in this case when specifying user-agent ...
     headers = {}
@@ -389,12 +377,12 @@ def downloadURLToFile(url, file, DOWNLOAD_TYPE):
         return
 
     #showResponse(response)
-    print("type={}, content.len={}".format(DOWNLOAD_TYPE, len(response.content)))
+    debug(1, "type={}, content.len={}".format(DOWNLOAD_TYPE, len(response.content)))
     if "The request signature we calculated" in response.content.decode('utf8', 'ignore'):
         print("Skipping bad content for file <{}> - may not be available yet".format(file))
         return
         
-    print("Writing content to <{}>".format(file))
+    debug(2, "Writing content to <{}>".format(file))
     writeBinaryFile(file, response.content)
     #fatal("STOP")
 
@@ -411,7 +399,6 @@ def downloadFile(url, download_dir, DOWNLOAD_TYPE):
         
         # Let's strip of the /video at the end:
         urlUptoNumber = url [ :url.rfind('/video') ]
-        #print(urlUptoNumber)
 
         # Get the filename from the url after the last slash (where the number is):
         filename = course_id + '_' + urlUptoNumber[ urlUptoNumber.rfind('/') + 1: ] + ".mp4"
@@ -442,10 +429,9 @@ def getCourseWeekPage(course_id, week_id):
     #showResponse(response)
     content = response.content.decode('utf8')
 
-    if DEBUG:
-        ofile= TMP_DIR + '/course.' + course_id + '.w' + week_id + '.response.content'
-        print("Writing 'course week {} page' response to <{}>".format(week_id, ofile))
-        writeFile(ofile, content)
+    saveDebugItem( 'course.' + course_id + '.w' + week_id + '.response.content',
+                   "'course week {} page'".format(week_id),
+                   content)
 
     ## -- Now loop through identifying steps:
 
@@ -464,8 +450,7 @@ def getCourseWeekPage(course_id, week_id):
         pos += current[pos:].find(MATCH)
         info = current[ pos-10 : pos + 20 ]
     
-        #if DEBUG:
-            #print("INFO=" + info)
+        debug(4, "INFO=" + info)
 
         ipos = pos + len(MATCH)
         stepid = getInteger(current, ipos)
@@ -473,7 +458,7 @@ def getCourseWeekPage(course_id, week_id):
    
         if not stepid in steps_seen and not stepid == '':
             steps_seen.append(stepid)
-            #if DEBUG: print("STEPID=" + stepid)
+            debug(4, "STEPID=" + stepid)
 
         # Step over current '/steps/':
         pos += len(MATCH)
@@ -494,11 +479,7 @@ def getCoursePage(course_id):
     #showResponse(response)
     content = response.content.decode('utf8')
 
-    DEBUG=True
-    if DEBUG:
-        ofile= TMP_DIR + '/course.' + course_id + '.response.content'
-        print("Writing 'course page' response to <{}>".format(ofile))
-        writeFile(ofile, content)
+    saveDebugItem( 'course.' + course_id + '.response.content', "'course page'", content)
 
     ## TODO: Make this page parsing more robust: should be checking /todo/ is part of an "<a href"
     ## -- Now loop through identifying weekids: ../todo/<WEEKID>
@@ -514,8 +495,7 @@ def getCoursePage(course_id):
 
         if not weekid in weeks_seen and not weekid == '':
             weeks_seen.append(weekid)
-            if DEBUG:
-                print("WEEKID=" + weekid)
+            debug(4,"WEEKID=" + weekid)
 
         # Step over current '/todo/':
         pos += len(MATCH)
@@ -528,13 +508,29 @@ def getCoursePage(course_id):
 
 ## -- Main: --------------------------------------------------------
 
+TMP_DIR = os.getenv('TMP_DIR', default='/tmp/FUTURELEARN_DL')
+OP_DIR  = os.getenv('OP_DIR',  default=os.getenv('HOME') + '/Education/FUTURELEARN')
+
+debug(2, "Using temp   dir <{}>".format(TMP_DIR))
+debug(2, "Using Output dir <{}>".format(OP_DIR))
+
+email = sys.argv[1]
+password = sys.argv[2]
+course_id = sys.argv[3]
+course_run = int(sys.argv[4])
+
+COURSE_URL='https://www.futurelearn.com/courses/{}/{}/todo'.format(course_id, course_run)
+COURSE_STEP_URL='https://www.futurelearn.com/courses/{}/{}/steps'.format(course_id, course_run)
+
+if len(sys.argv) == 6:
+    WEEK_NUM = int(sys.argv[5])
 session = requests.Session()
 
 mkdir_p(TMP_DIR)
 if not os.path.isdir(TMP_DIR):
     fatal("Failed to create tmp dir <{}>".format(TMP_DIR))
 
-print("Using e-mail={} password=***** course_id={}".format(email, course_id))
+debug(2, "Using e-mail={} password=***** course_id={}".format(email, course_id))
 
 ## -- do the login:
 token, cookies = getToken(session, SIGNIN_URL)
@@ -542,27 +538,26 @@ response = login(session, SIGNIN_URL, email, password, token, cookies)
 
 WEEKS = getCoursePage(course_id)
 
-print("Course seems to comprise of {} weeks".format(len(WEEKS)))
-#print(str(WEEKS))
+debug(1, "Downloading course '{}' - seems to comprise of {} weeks".format(course_id, len(WEEKS)))
 
 if WEEK_NUM == -1: # All
-    print("Downloading all weeks - if available")
+    debug(2, "Downloading all weeks - if available")
     week_num=0
     for week_id in WEEKS:
         week_num += 1
-        print("Downloading available week{} material".format(week_num))
+        debug(2, "Downloading available week{} material".format(week_num))
         steps = getCourseWeekPage(course_id, week_id)
-        print("STEPS=" + str(steps))
+        debug(2, "STEPS=" + str(steps))
         for step_id in steps:
             getCourseWeekStepPage(course_id, week_id, step_id, week_num)
 else:
-    print("Downloading week " + str(WEEK_NUM))
+    debug(1, "Downloading week " + str(WEEK_NUM))
     if WEEK_NUM > len(WEEKS) or WEEK_NUM < 1:
         fatal("No such week as " + str(WEEK_NUM))
 
     week_num = WEEK_NUM
     week_id = WEEKS[week_num-1]
-    print("Downloading available week{} material".format(week_num))
+    debug(1, "Downloading available week{} material".format(week_num))
     steps = getCourseWeekPage(course_id, week_id)
     for step_id in steps:
         getCourseWeekStepPage(course_id, week_id, step_id, week_num)
