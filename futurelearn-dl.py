@@ -538,7 +538,7 @@ response = login(session, SIGNIN_URL, email, password, token, cookies)
 
 WEEKS = getCoursePage(course_id)
 
-debug(1, "Downloading course '{}' - seems to comprise of {} weeks".format(course_id, len(WEEKS)))
+debug(1, "Downloading {}-week course '{}'".format(len(WEEKS), course_id))
 
 if WEEK_NUM == -1: # All
     debug(2, "Downloading all weeks - if available")
