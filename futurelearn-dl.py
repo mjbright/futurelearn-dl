@@ -367,7 +367,7 @@ def downloadURLToFile(url, file, DOWNLOAD_TYPE):
             debug(2, "Skipping non-zero size file <{}> of {} bytes".format(file, statinfo.st_size))
             return
 
-    debug(1, "Downloading url<{}> ...".format(url), end='')
+    debug(1, "Downloading url<{}> ...".format(url))
 
     # No user-agent: had some failures in this case when specifying user-agent ...
     headers = {}
