@@ -37,7 +37,7 @@ WEEK_NUM = -1 # Select all weeks unless specified on command-line
 #DOWNLOAD_TYPES = [ 'pdf' ]
 #DOWNLOAD_TYPES = [ 'mp4' ]
 #DOWNLOAD_TYPES = [ 'pdf', 'mp4', 'mp3', 'ppt', 'pptx', 'wmv' ]
-DOWNLOAD_TYPES = [ 'html', 'pdf', 'mp4' ]
+DOWNLOAD_TYPES = [ 'html', 'pdf', 'mp4', 'mp3' ]
 for d in range(len(DOWNLOAD_TYPES)):
     DOWNLOAD_TYPES[d] = DOWNLOAD_TYPES[d].lower()
     
@@ -274,6 +274,10 @@ def downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_
         POS_MATCH='<video'
         MEDIA_MATCH='video/mp4'
 
+    if DOWNLOAD_TYPE == 'mp3':
+        POS_MATCH='<audio'
+        MEDIA_MATCH='audio/mpeg'
+
     # If there's no mention of such media in the whole file, leave now:
     if not MEDIA_MATCH in content.lower():
         return urls
@@ -314,6 +318,21 @@ def downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_
             pos += mpos
             pos += len(SRC_MATCH)
             debug(4, "source src ==> <<{}...>>".format(content[pos:pos+400]))
+        elif DOWNLOAD_TYPE == 'mp3':
+            debug(4, "audio in <<{}...>>".format(content[pos:pos+400]))
+            pos += len(POS_MATCH)
+
+            SRC_MATCH='<source src='
+            mpos = content[pos:].lower().find(SRC_MATCH)
+
+            # If there's no match, assume we reached the end of the content:
+            if mpos == -1:
+                return urls
+
+            pos += mpos
+            pos += len(SRC_MATCH)
+            debug(4, "source src ==> <<{}...>>".format(content[pos:pos+400]))
+            #pause("mp3 found")
         else:
             debug(4, "HREF ==> <<{}...>>".format(content[pos:pos+400]))
             pos += len(POS_MATCH)
@@ -343,6 +362,8 @@ def downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_
         #pause("Got url <<{}>>".format(url))
 
         debug(4, "URL=<<{}>>".format(url))
+        #if DOWNLOAD_TYPE == 'mp3':
+        #    pause("mp3 found")
 
         if url in urls_seen or url == '' or len(url) == 0:
             pass
@@ -353,7 +374,7 @@ def downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_
 
         download_dir = OP_DIR + '/' + course_id + '/week' + str(week_num)
 
-        if DOWNLOAD_TYPE == 'mp4':
+        if DOWNLOAD_TYPE == 'mp4' or DOWNLOAD_TYPE == 'mp3':
             debug(4, "MATCHING URL=<<{}>>".format(url))
             urls.append( url )
             downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title)
@@ -400,7 +421,7 @@ def downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title):
     
     filename = course_id + '-' + title
 
-    if DOWNLOAD_TYPE == 'mp4':
+    if DOWNLOAD_TYPE == 'mp4' or DOWNLOAD_TYPE == 'mp3':
         # We need to create an 'x.mp4' filename from the url of the form
         #    'https://view.vzaar.com/2088434/video':
         
@@ -408,7 +429,7 @@ def downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title):
         urlUptoNumber = url [ :url.rfind('/video') ]
 
         # Get the filename from the url after the last slash (where the number is):
-        filename = filename +  '_' + urlUptoNumber[ urlUptoNumber.rfind('/') + 1: ] + ".mp4"
+        filename = filename +  '_' + urlUptoNumber[ urlUptoNumber.rfind('/') + 1: ] + "." + DOWNLOAD_TYPE
 
         ofile= download_dir + '/' + filename
         downloadURLToFile(url, ofile, DOWNLOAD_TYPE)
