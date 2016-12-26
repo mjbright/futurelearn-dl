@@ -37,7 +37,7 @@ WEEK_NUM = -1 # Select all weeks unless specified on command-line
 #DOWNLOAD_TYPES = [ 'pdf' ]
 #DOWNLOAD_TYPES = [ 'mp4' ]
 #DOWNLOAD_TYPES = [ 'pdf', 'mp4', 'mp3', 'ppt', 'pptx', 'wmv' ]
-DOWNLOAD_TYPES = [ 'pdf', 'mp4' ]
+DOWNLOAD_TYPES = [ 'html', 'pdf', 'mp4' ]
 for d in range(len(DOWNLOAD_TYPES)):
     DOWNLOAD_TYPES[d] = DOWNLOAD_TYPES[d].lower()
     
@@ -450,12 +450,23 @@ def getCourseWeekPage(course_id, week_id):
 
     pos=0
     MATCH='/steps/'
+    #SECTION_MATCH='m-composite-link__identifier'
+    SECTION_MATCH='a-stepnumber'
     TITLE_MATCH='m-composite-link__primary'
 
     while MATCH in current[pos:]:
         pos += current[pos:].find(MATCH)
         info = current[ pos-10 : pos + 20 ]
     
+        section_pos = current[pos:].find(SECTION_MATCH)
+        if section_pos == -1:
+            link_section=""
+        else:
+            section_pos = pos + section_pos + len(SECTION_MATCH)
+            section_pos = 3 + section_pos + current[section_pos].find('>')
+            end_section_pos = section_pos + current[section_pos:].find('<')
+            link_section=current[section_pos:end_section_pos] + "-"
+
         title_pos = current[pos:].find(TITLE_MATCH)
         if title_pos == -1:
             link_title="UNKNOWN"
@@ -464,6 +475,8 @@ def getCourseWeekPage(course_id, week_id):
             title_pos = 3 + title_pos + current[title_pos].find('>')
             end_title_pos = title_pos + current[title_pos:].find('<')
             link_title=current[title_pos:end_title_pos].replace("/",".").replace("?","").replace("!","")
+
+        link_title = link_section + link_title
 
         #debug(4, "--------\nCURRENT["+str(pos)+":+300]=" + current[pos:pos+300])
         #debug(4, "INFO=" + info)
