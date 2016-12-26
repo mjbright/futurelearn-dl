@@ -446,19 +446,37 @@ def getCourseWeekPage(course_id, week_id):
 
     pos=0
     MATCH='/steps/'
-    while MATCH in current:
+    TITLE_MATCH='m-composite-link__primary'
+
+    while MATCH in current[pos:]:
         pos += current[pos:].find(MATCH)
         info = current[ pos-10 : pos + 20 ]
     
-        debug(4, "INFO=" + info)
+        title_pos = current[pos:].find(TITLE_MATCH)
+        if title_pos == -1:
+            link_title="UNKNOWN"
+        else:
+            title_pos = pos + title_pos + len(TITLE_MATCH)
+            title_pos = 3 + title_pos + current[title_pos].find('>')
+            end_title_pos = title_pos + current[title_pos:].find('<')
+            link_title=current[title_pos:end_title_pos].replace("/",".").replace("?","").replace("!","")
+
+        #debug(4, "--------\nCURRENT["+str(pos)+":+300]=" + current[pos:pos+300])
+        #debug(4, "INFO=" + info)
+        #debug(4, "title_pos=" + str(title_pos))
+        #debug(4, "title_pos[200]=" + current[title_pos:title_pos+200])
+        debug(4, "LINK_TITLE='" + link_title + "'")
+        link_title = link_title.replace("'", "")
+        link_title = link_title.replace('"', "")
+        #sys.exit(1)
 
         ipos = pos + len(MATCH)
         stepid = getInteger(current, ipos)
-        current = current[pos+6:]
+        # current = current[pos+6:]; pos=0
    
         if not stepid in steps_seen and not stepid == '':
             steps_seen.append(stepid)
-            debug(4, "STEPID=" + stepid)
+            debug(4, "STEPID='" + stepid + "' TITLE='" + link_title + "'")
 
         # Step over current '/steps/':
         pos += len(MATCH)
