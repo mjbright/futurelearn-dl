@@ -221,7 +221,8 @@ def getCourseWeekStepPage(course_id, week_id, step_id, week_num, page_title):
 
     download_dir = OP_DIR + '/' + course_id + '/week' + str(week_num)
     mkdir_p(download_dir)
-    htmlfile = download_dir + '/' + course_id + '.s' + step_id + '.' + page_title + '.html'
+    #htmlfile = download_dir + '/' + course_id + '.s' + step_id + '.' + page_title + '.html'
+    htmlfile = download_dir + '/' + course_id + '.' + page_title + '.html'
     writeFile(htmlfile, content)
 
     num_urls = 0
