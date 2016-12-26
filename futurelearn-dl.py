@@ -215,10 +215,14 @@ def getCourseWeekStepPage(course_id, week_id, step_id, week_num, page_title):
     #showResponse(response)
     content = response.content.decode('utf8', 'ignore')
 
-    print("TITLE=<" + page_title + ">")
     ofile = saveItem( 'course.' + course_id + '.s' + step_id + '.' + page_title + '.response.content',
                    "'course week step {} page'".format(step_id),
                    content)
+
+    download_dir = OP_DIR + '/' + course_id + '/week' + str(week_num)
+    mkdir_p(download_dir)
+    htmlfile = download_dir + '/' + course_id + '.s' + step_id + '.' + page_title + '.html'
+    writeFile(htmlfile, content)
 
     num_urls = 0
     for DOWNLOAD_TYPE in DOWNLOAD_TYPES:
@@ -285,7 +289,6 @@ def downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_
     pos = 0
     while POS_MATCH in content.lower():
         mpos = content[pos:].lower().find(POS_MATCH)
-        #sys,exit(1)
         if mpos == -1:
             #if len(urls) != 0:
                 #print(str(urls))
@@ -450,7 +453,6 @@ def getCourseWeekPage(course_id, week_id):
 
     pos=0
     MATCH='/steps/'
-    #SECTION_MATCH='m-composite-link__identifier'
     SECTION_MATCH='a-stepnumber'
     TITLE_MATCH='m-composite-link__primary'
 
@@ -462,8 +464,16 @@ def getCourseWeekPage(course_id, week_id):
         if section_pos == -1:
             link_section=""
         else:
-            section_pos = pos + section_pos + len(SECTION_MATCH)
-            section_pos = 3 + section_pos + current[section_pos].find('>')
+            debug(4, "----------------------")
+            section_pos = pos + section_pos
+            debug(4, "section_pos[200]=" + current[section_pos:section_pos+200])
+
+            section_pos = section_pos + len(SECTION_MATCH)
+            debug(4, "section_pos[200]=" + current[section_pos:section_pos+200])
+
+            section_pos = 1 + section_pos + current[section_pos:].find('>')
+            debug(4, "section_pos[200]=" + current[section_pos:section_pos+200])
+
             end_section_pos = section_pos + current[section_pos:].find('<')
             link_section=current[section_pos:end_section_pos] + "-"
 
@@ -485,7 +495,6 @@ def getCourseWeekPage(course_id, week_id):
         debug(4, "LINK_TITLE='" + link_title + "'")
         link_title = link_title.replace("'", "")
         link_title = link_title.replace('"', "")
-        #sys.exit(1)
 
         ipos = pos + len(MATCH)
         stepid = getInteger(current, ipos)
@@ -500,7 +509,6 @@ def getCourseWeekPage(course_id, week_id):
         # Step over current '/steps/':
         pos += len(MATCH)
 
-    #sys.exit(1) # DEBUGGING
     return steps_seen, titles_seen
 
 def getCoursePage(course_id):
