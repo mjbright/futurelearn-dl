@@ -222,7 +222,7 @@ def getCourseWeekStepPage(course_id, week_id, step_id, week_num, page_title):
     download_dir = OP_DIR + '/' + course_id + '/week' + str(week_num)
     mkdir_p(download_dir)
     #htmlfile = download_dir + '/' + course_id + '.s' + step_id + '.' + page_title + '.html'
-    htmlfile = download_dir + '/' + course_id + '.' + page_title + '.html'
+    htmlfile = download_dir + '/' + page_title + '.html'
     writeFile(htmlfile, content)
 
     num_urls = 0
@@ -419,7 +419,8 @@ def downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title):
 
     mkdir_p(download_dir)
     
-    filename = course_id + '-' + title
+    #filename = course_id + '-' + title
+    filename = title
 
     if DOWNLOAD_TYPE == 'mp4' or DOWNLOAD_TYPE == 'mp3':
         # We need to create an 'x.mp4' filename from the url of the form
