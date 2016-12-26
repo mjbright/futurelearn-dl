@@ -194,7 +194,7 @@ def getInteger(content, ipos):
 
     return ivalue
 
-def getCourseWeekStepPage(course_id, week_id, step_id, week_num):
+def getCourseWeekStepPage(course_id, week_id, step_id, week_num, page_title):
     '''
         get the specified step page
 
@@ -215,7 +215,8 @@ def getCourseWeekStepPage(course_id, week_id, step_id, week_num):
     #showResponse(response)
     content = response.content.decode('utf8', 'ignore')
 
-    ofile = saveItem( 'course.' + course_id + '.s' + step_id + '.response.content',
+    print("TITLE=<" + page_title + ">")
+    ofile = saveItem( 'course.' + course_id + '.s' + step_id + '.' + page_title + '.response.content',
                    "'course week step {} page'".format(step_id),
                    content)
 
@@ -223,7 +224,7 @@ def getCourseWeekStepPage(course_id, week_id, step_id, week_num):
     for DOWNLOAD_TYPE in DOWNLOAD_TYPES:
         debug(4, "Searching for '{}' files in {}".format(DOWNLOAD_TYPE, ofile))
         URLS[DOWNLOAD_TYPE] = \
-            getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE)
+            downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE, page_title)
 
         num_urls += len(URLS[DOWNLOAD_TYPE])
 
@@ -248,7 +249,7 @@ def pause(msg):
         print("Press <return> to continue")
         input()
 
-def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE):
+def downloadURLsInPage(course_id, week_id, step_id, week_num, content, DOWNLOAD_TYPE, page_title):
     ## -- Now loop through identifying downloadable items:
 
     urls = []
@@ -279,11 +280,12 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
     # MP4:
     # <video poster="//view.vzaar.com/2088550/image" width="auto" height="auto" id="video-2088550" class="video-js vjs-futurelearn-skin" controls="controls" preload="none" data-hd-src="//view.vzaar.com/2088550/video/hd" data-sd-src="//view.vzaar.com/2088550/video"><source src="//view.vzaar.com/2088550/video" type="video/mp4" />
 
-    debug(4, "getDownloadableURLs({}..., {})".format(content[:10], DOWNLOAD_TYPE))
+    debug(4, "downloadURLsInPage({}..., {})".format(content[:10], DOWNLOAD_TYPE))
 
     pos = 0
     while POS_MATCH in content.lower():
         mpos = content[pos:].lower().find(POS_MATCH)
+        #sys,exit(1)
         if mpos == -1:
             #if len(urls) != 0:
                 #print(str(urls))
@@ -350,13 +352,13 @@ def getDownloadableURLs(course_id, week_id, step_id, week_num, content, DOWNLOAD
         if DOWNLOAD_TYPE == 'mp4':
             debug(4, "MATCHING URL=<<{}>>".format(url))
             urls.append( url )
-            downloadFile(url, download_dir, DOWNLOAD_TYPE)
+            downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title)
         else:
             # With other types, check that the url ends with the type e.g. ".pdf"
             if lurl[-(1+len(DOWNLOAD_TYPE)):] == "." + DOWNLOAD_TYPE:
                 debug(4, "MATCHING URL=<<{}>>".format(url))
                 urls.append( url )
-                downloadFile(url, download_dir, DOWNLOAD_TYPE)
+                downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title)
 
     return urls
 
@@ -367,7 +369,7 @@ def downloadURLToFile(url, file, DOWNLOAD_TYPE):
             debug(2, "Skipping non-zero size file <{}> of {} bytes".format(file, statinfo.st_size))
             return
 
-    debug(1, "Downloading url<{}> ...".format(url))
+    debug(1, "Downloading url<{}>\n\tto file <{}> ...".format(url, file))
 
     # No user-agent: had some failures in this case when specifying user-agent ...
     headers = {}
@@ -386,12 +388,13 @@ def downloadURLToFile(url, file, DOWNLOAD_TYPE):
     writeBinaryFile(file, response.content)
     #fatal("STOP")
 
-def downloadFile(url, download_dir, DOWNLOAD_TYPE):
+def downloadURLInPage(url, download_dir, DOWNLOAD_TYPE, page_title):
     if not DOWNLOAD:
         return
 
     mkdir_p(download_dir)
     
+    filename = course_id + '-' + title
 
     if DOWNLOAD_TYPE == 'mp4':
         # We need to create an 'x.mp4' filename from the url of the form
@@ -401,19 +404,19 @@ def downloadFile(url, download_dir, DOWNLOAD_TYPE):
         urlUptoNumber = url [ :url.rfind('/video') ]
 
         # Get the filename from the url after the last slash (where the number is):
-        filename = course_id + '_' + urlUptoNumber[ urlUptoNumber.rfind('/') + 1: ] + ".mp4"
+        filename = filename +  '_' + urlUptoNumber[ urlUptoNumber.rfind('/') + 1: ] + ".mp4"
 
         ofile= download_dir + '/' + filename
         downloadURLToFile(url, ofile, DOWNLOAD_TYPE)
     else:
         # Get the filename from the url after the last slash (where the source filename is):
-        filename = url[ url.rfind('/') + 1: ]
+        filename = filename +  '_' + url[ url.rfind('/') + 1: ]
 
         # Replace any '%20' chars by underscore(_)
         filename = filename.replace('%20', '_')
 
         if '%' in filename:
-            fatal("downloadFile: Unhandled escape sequence in filename <{}>".format(filename))
+            fatal("downloadURLInPage: Unhandled escape sequence in filename <{}>".format(filename))
 
         ofile= download_dir + '/' + filename
         downloadURLToFile(url, ofile, DOWNLOAD_TYPE)
@@ -429,7 +432,7 @@ def getCourseWeekPage(course_id, week_id):
     #showResponse(response)
     content = response.content.decode('utf8')
 
-    saveDebugItem( 'course.' + course_id + '.w' + week_id + '.response.content',
+    saveDebugItem( 'course.WEEK.' + course_id + '.w' + week_id + '.response.content',
                    "'course week {} page'".format(week_id),
                    content)
 
@@ -443,6 +446,7 @@ def getCourseWeekPage(course_id, week_id):
     current = current[pos:]
 
     steps_seen=[]
+    titles_seen=[]
 
     pos=0
     MATCH='/steps/'
@@ -475,13 +479,16 @@ def getCourseWeekPage(course_id, week_id):
         # current = current[pos+6:]; pos=0
    
         if not stepid in steps_seen and not stepid == '':
+            link_title = link_title.replace(' ', '-')
+            titles_seen.append(link_title)
             steps_seen.append(stepid)
             debug(4, "STEPID='" + stepid + "' TITLE='" + link_title + "'")
 
         # Step over current '/steps/':
         pos += len(MATCH)
 
-    return steps_seen
+    #sys.exit(1) # DEBUGGING
+    return steps_seen, titles_seen
 
 def getCoursePage(course_id):
     '''
@@ -564,10 +571,10 @@ if WEEK_NUM == -1: # All
     for week_id in WEEKS:
         week_num += 1
         debug(2, "Downloading available week{} material".format(week_num))
-        steps = getCourseWeekPage(course_id, week_id)
+        (steps, titles) = getCourseWeekPage(course_id, week_id)
         debug(2, "STEPS=" + str(steps))
-        for step_id in steps:
-            getCourseWeekStepPage(course_id, week_id, step_id, week_num)
+        for (step_id,title) in zip(steps,titles):
+            getCourseWeekStepPage(course_id, week_id, step_id, week_num, title)
 else:
     debug(1, "Downloading week " + str(WEEK_NUM))
     if WEEK_NUM > len(WEEKS) or WEEK_NUM < 1:
@@ -576,9 +583,9 @@ else:
     week_num = WEEK_NUM
     week_id = WEEKS[week_num-1]
     debug(1, "Downloading available week{} material".format(week_num))
-    steps = getCourseWeekPage(course_id, week_id)
-    for step_id in steps:
-        getCourseWeekStepPage(course_id, week_id, step_id, week_num)
+    (steps, titles) = getCourseWeekPage(course_id, week_id)
+    for (step_id,title) in zip(steps,titles):
+        getCourseWeekStepPage(course_id, week_id, step_id, week_num, title)
 
 sys.exit(0)
 ################################################################################
